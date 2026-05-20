@@ -89,7 +89,7 @@
     const reader = new FileReader();
     reader.onload = function(e) {
       novelText = e.target.result;
-      if (novelText.length > 15000) {
+      if (novelText.length > 100000) {
         novelText = novelText.substring(0, 15000);
         document.getElementById('status').textContent = '⚠️ 文件较长，已截取前15000字';
       } else {
