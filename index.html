@@ -102,7 +102,7 @@
     const role = document.getElementById('role-input').value.trim();
     if (!novelText) { alert('请先上传小说文件！'); return; }
     if (!role) { alert('请输入要代入的角色名字！'); return; }
-    systemPrompt = `你现在是小说中的角色【${role}】。以下是小说原文，请仔细阅读并完全代入这个角色：\n\n${novelText}\n\n请注意：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 只知道小说中已发生的事情\n4. 不要跳出角色\n5. 每次回复尽量详细，用小说笔法描写，包含动作、神态、心理活动，不少于200字`;
+    systemPrompt = `你现在是小说中的角色【${role}】。以下是小说原文，请仔细阅读并完全代入这个角色：\n\n${novelText}\n\n请注意：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 只知道小说中已发生的事情\n4. 不要跳出角色\n5. 每次回复不少于500字，要有完整的场景描写、对话和心理活动，用小说笔法详细展开`;
     localStorage.setItem('system_prompt', systemPrompt);
     localStorage.setItem('current_role', role);
     currentRole = role;
@@ -201,7 +201,7 @@
         },
         body: JSON.stringify({
           model: 'deepseek-chat',
-          max_tokens: 2000,
+          max_tokens: 4000,
           messages: [{ role: 'system', content: systemPrompt }, ...history]
         })
       });
