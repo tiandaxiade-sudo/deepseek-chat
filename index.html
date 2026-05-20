@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>小说角色聊天</title>
+<title>小说创作助手</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
@@ -17,18 +17,25 @@
   #role-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
   #load-btn { padding: 8px 14px; background: #388e3c; color: white; border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; }
   #status { font-size: 13px; color: #555; }
-  #toolbar { padding: 8px 12px; background: #fff; border-bottom: 1px solid #ddd; display: flex; gap: 8px; }
+  #mode-area { padding: 10px 12px; background: #f3e5f5; border-bottom: 1px solid #ce93d8; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #mode-area span { font-size: 14px; font-weight: bold; color: #6a1b9a; white-space: nowrap; }
+  #mode-select { flex: 1; padding: 7px; border: 1px solid #ce93d8; border-radius: 8px; font-size: 14px; background: white; min-width: 120px; }
+  #model-select { flex: 1; padding: 7px; border: 1px solid #ce93d8; border-radius: 8px; font-size: 14px; background: white; min-width: 120px; }
+  #toolbar { padding: 8px 12px; background: #fff; border-bottom: 1px solid #ddd; display: flex; gap: 8px; flex-wrap: wrap; }
   #toolbar button { padding: 6px 14px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
   #export-btn { background: #1a73e8; color: white; }
   #clear-btn { background: #e53935; color: white; }
+  #continue-btn { background: #7b1fa2; color: white; }
   #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { max-width: 80%; padding: 10px 14px; border-radius: 16px; line-height: 1.5; white-space: pre-wrap; }
+  .msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; line-height: 1.8; white-space: pre-wrap; }
   .user { background: #1a73e8; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
-  .ai { background: white; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .ai { background: white; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 15px; }
   .time { font-size: 11px; opacity: 0.6; margin-top: 4px; }
-  #bottom { padding: 12px; background: white; display: flex; gap: 8px; border-top: 1px solid #ddd; }
-  #input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; outline: none; font-size: 15px; }
-  #send { padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 20px; font-size: 15px; cursor: pointer; }
+  #bottom { padding: 12px; background: white; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #ddd; }
+  #input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 12px; outline: none; font-size: 15px; min-height: 60px; resize: none; }
+  #send { padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 20px; font-size: 15px; cursor: pointer; align-self: flex-end; }
+  #hint { font-size: 12px; color: #999; padding: 0 4px; }
+  .model-tag { font-size: 11px; background: #7b1fa2; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -39,25 +46,42 @@
 </div>
 
 <div id="novel-area">
-  <label>📖 上传小说原文（txt格式）</label>
+  <label>📖 上传小说原文（txt格式，选填）</label>
   <div id="novel-controls">
     <input id="file-input" type="file" accept=".txt" onchange="loadFile(event)" />
     <button id="load-btn" onclick="applyNovel()">应用</button>
   </div>
-  <input id="role-input" type="text" placeholder="输入要代入的角色名字，例如：李逍遥" />
+  <input id="role-input" type="text" placeholder="角色扮演模式：输入角色名字（其他模式可不填）" />
   <div id="status">📂 未加载文件</div>
 </div>
 
+<div id="mode-area">
+  <span>✍️ 模式：</span>
+  <select id="mode-select" onchange="onModeChange()">
+    <option value="roleplay">🎭 角色扮演</option>
+    <option value="continue">📝 续写小说</option>
+    <option value="scene">🎬 场景创作</option>
+    <option value="full">📚 完整小说模式</option>
+  </select>
+  <span>🤖 模型：</span>
+  <select id="model-select">
+    <option value="deepseek-chat">D老师（普通）</option>
+    <option value="deepseek-reasoner">D老师 R1（更强）</option>
+  </select>
+</div>
+
 <div id="toolbar">
-  <button id="export-btn" onclick="exportChat()">📥 导出聊天记录</button>
-  <button id="clear-btn" onclick="clearChat()">🗑️ 清空记录</button>
+  <button id="export-btn" onclick="exportChat()">📥 导出</button>
+  <button id="continue-btn" onclick="continueWrite()">▶️ 继续写</button>
+  <button id="clear-btn" onclick="clearChat()">🗑️ 清空</button>
 </div>
 
 <div id="chat"></div>
 
 <div id="bottom">
-  <input id="input" type="text" placeholder="输入消息..." onkeydown="if(event.key==='Enter')send()" />
-  <button id="send" onclick="send()">发送</button>
+  <div id="hint">💡 选好模式后点"应用"，然后开始创作</div>
+  <textarea id="input" placeholder="输入内容..." onkeydown="if(event.ctrlKey&&event.key==='Enter')send()"></textarea>
+  <button id="send" onclick="send()">发送（Ctrl+Enter）</button>
 </div>
 
 <script>
@@ -98,17 +122,50 @@
     reader.readAsText(file, 'UTF-8');
   }
 
+  function getSystemPrompt(mode, role) {
+    const novelContext = novelText ? `\n\n以下是小说原文供参考：\n${novelText}` : '';
+    switch(mode) {
+      case 'roleplay':
+        return `你现在是小说中的角色【${role}】。请完全代入这个角色：${novelContext}\n\n规则：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 不要跳出角色\n4. 每次回复不少于1000字，包含动作、神态、心理活动，用小说笔法详细展开，情节要有起伏`;
+      case 'continue':
+        return `你是一位专业网络小说作家，擅长续写小说。${novelContext}\n\n规则：\n1. 用户提供前文，你负责续写\n2. 保持原文的文风、人物性格和故事走向\n3. 每次续写不少于1500字\n4. 情节要有起伏，对话要生动，场景要细腻\n5. 直接输出续写内容，不要加任何说明\n6. 如果用户说"继续"，接着上文继续写`;
+      case 'scene':
+        return `你是一位专业网络小说作家，擅长场景创作。${novelContext}\n\n规则：\n1. 根据用户描述的场景指令进行创作\n2. 每个场景不少于1200字\n3. 要有生动的对话、细腻的动作描写和人物心理\n4. 语言要有张力，情感要饱满\n5. 直接输出场景内容，不要加任何说明\n6. 如果用户说"继续"，延续场景继续写`;
+      case 'full':
+        return `你是一位专业网络小说作家，同时具备角色扮演、续写和场景创作能力。${novelContext}\n\n规则：\n1. 可以扮演任何角色和用户对话\n2. 可以续写故事情节\n3. 可以根据指令创作任意场景\n4. 每次回复不少于1200字，用小说笔法展开\n5. 语言生动，情节丰富，人物鲜活\n6. 如果用户说"继续"，接着上文继续写`;
+    }
+  }
+
   function applyNovel() {
     const role = document.getElementById('role-input').value.trim();
-    if (!novelText) { alert('请先上传小说文件！'); return; }
-    if (!role) { alert('请输入要代入的角色名字！'); return; }
-    systemPrompt = `你现在是小说中的角色【${role}】。以下是小说原文，请仔细阅读并完全代入这个角色：\n\n${novelText}\n\n请注意：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 只知道小说中已发生的事情\n4. 不要跳出角色\n5. 每次回复不少于500字，要有完整的场景描写、对话和心理活动，用小说笔法详细展开`;
+    const mode = document.getElementById('mode-select').value;
+    if (mode === 'roleplay' && !role) { alert('角色扮演模式请填写角色名字！'); return; }
+    systemPrompt = getSystemPrompt(mode, role);
     localStorage.setItem('system_prompt', systemPrompt);
     localStorage.setItem('current_role', role);
     currentRole = role;
     history = [];
     localStorage.setItem('chat_history', '[]');
-    addMsg(`✅ 已加载角色【${role}】，可以开始对话了！`, 'ai');
+    const modeNames = { roleplay: '角色扮演', continue: '续写小说', scene: '场景创作', full: '完整小说模式' };
+    const model = document.getElementById('model-select').value;
+    const modelName = model === 'deepseek-reasoner' ? 'D老师 R1' : 'D老师';
+    addMsg(`✅ 已切换到【${modeNames[mode]}】模式，使用【${modelName}】${role ? '，角色：' + role : ''}，开始吧！`, 'ai');
+  }
+
+  function onModeChange() {
+    const mode = document.getElementById('mode-select').value;
+    const hints = {
+      roleplay: '💡 和角色直接对话，D老师会以角色身份详细回应',
+      continue: '💡 粘贴小说前文，D老师会续写后续情节（发"继续"可接着写）',
+      scene: '💡 描述你想要的场景，例如"写一段两人初次见面的场景"（发"继续"可延续）',
+      full: '💡 混合模式：可对话、可续写、可创作场景（发"继续"可接着写）'
+    };
+    document.getElementById('hint').textContent = hints[mode];
+  }
+
+  function continueWrite() {
+    document.getElementById('input').value = '继续写，接着上文，不要重复已有内容，再写1500字';
+    send();
   }
 
   function getTime() {
@@ -144,17 +201,17 @@
 
   function exportChat() {
     if (savedMessages.length === 0) { alert('没有聊天记录可导出！'); return; }
-    let content = `聊天记录 - ${currentRole || 'AI'}\n`;
+    let content = `小说创作记录 - ${currentRole || 'AI'}\n`;
     content += '='.repeat(30) + '\n\n';
     savedMessages.forEach(m => {
-      const role = m.cls === 'user' ? '我' : (currentRole || 'AI');
+      const role = m.cls === 'user' ? '我' : (currentRole || 'D老师');
       content += `[${m.time}] ${role}：\n${m.text}\n\n`;
     });
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `聊天记录_${currentRole || 'AI'}_${new Date().toLocaleDateString()}.txt`;
+    a.download = `小说创作_${currentRole || 'D老师'}_${new Date().toLocaleDateString()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -173,7 +230,7 @@
     const input = document.getElementById('input');
     const text = input.value.trim();
     if (!text || !apiKey) return;
-    if (!systemPrompt) { alert('请先上传小说并点击"应用"！'); return; }
+    if (!systemPrompt) { alert('请先点击"应用"按钮设置模式！'); return; }
     input.value = '';
 
     addMsg(text, 'user');
@@ -187,12 +244,13 @@
     wrap.style.alignItems = 'flex-start';
     const loading = document.createElement('div');
     loading.className = 'msg ai';
-    loading.textContent = '思考中...';
+    loading.textContent = '✍️ 创作中...';
     wrap.appendChild(loading);
     chatDiv.appendChild(wrap);
     chatDiv.scrollTop = 9999;
 
     try {
+      const model = document.getElementById('model-select').value;
       const res = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
@@ -200,7 +258,7 @@
           'Authorization': 'Bearer ' + apiKey
         },
         body: JSON.stringify({
-          model: 'deepseek-chat',
+          model: model,
           max_tokens: 4000,
           messages: [{ role: 'system', content: systemPrompt }, ...history]
         })
