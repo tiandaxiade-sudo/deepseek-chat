@@ -1,12 +1,23 @@
+
 <!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI 聊天</title>
+<title>小说角色聊天</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
+  #key-area { padding: 12px; background: #fff8e1; border-bottom: 1px solid #ffe082; display: flex; gap: 8px; }
+  #apikey { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+  #save-key { padding: 8px 14px; background: #f57c00; color: white; border: none; border-radius: 8px; cursor: pointer; }
+  #novel-area { padding: 12px; background: #e8f5e9; border-bottom: 1px solid #c8e6c9; display: flex; flex-direction: column; gap: 8px; }
+  #novel-area label { font-size: 14px; color: #2e7d32; font-weight: bold; }
+  #novel-controls { display: flex; gap: 8px; align-items: center; }
+  #file-input { flex: 1; font-size: 13px; }
+  #role-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+  #load-btn { padding: 8px 14px; background: #388e3c; color: white; border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  #status { font-size: 13px; color: #555; }
   #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   .msg { max-width: 80%; padding: 10px 14px; border-radius: 16px; line-height: 1.5; white-space: pre-wrap; }
   .user { background: #1a73e8; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
@@ -14,9 +25,6 @@
   #bottom { padding: 12px; background: white; display: flex; gap: 8px; border-top: 1px solid #ddd; }
   #input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; outline: none; font-size: 15px; }
   #send { padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 20px; font-size: 15px; cursor: pointer; }
-  #key-area { padding: 12px; background: #fff8e1; border-bottom: 1px solid #ffe082; display: flex; gap: 8px; }
-  #apikey { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
-  #save-key { padding: 8px 14px; background: #f57c00; color: white; border: none; border-radius: 8px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -24,6 +32,16 @@
 <div id="key-area">
   <input id="apikey" type="password" placeholder="粘贴你的 DeepSeek API Key" />
   <button id="save-key" onclick="saveKey()">保存</button>
+</div>
+
+<div id="novel-area">
+  <label>📖 上传小说原文（txt格式）</label>
+  <div id="novel-controls">
+    <input id="file-input" type="file" accept=".txt" onchange="loadFile(event)" />
+    <button id="load-btn" onclick="applyNovel()">应用</button>
+  </div>
+  <input id="role-input" type="text" placeholder="输入要代入的角色名字，例如：李逍遥" />
+  <div id="status">📂 未加载文件</div>
 </div>
 
 <div id="chat"></div>
@@ -36,6 +54,8 @@
 <script>
   let apiKey = localStorage.getItem('ds_key') || '';
   let history = [];
+  let novelText = '';
+  let systemPrompt = '';
 
   if (apiKey) {
     document.getElementById('key-area').style.display = 'none';
@@ -46,11 +66,43 @@
     if (apiKey) {
       localStorage.setItem('ds_key', apiKey);
       document.getElementById('key-area').style.display = 'none';
-      addMsg('系统', '✅ API Key 已保存，可以开始聊天了！', 'ai');
+      addMsg('✅ API Key 已保存，可以开始使用了！', 'ai');
     }
   }
 
-  function addMsg(role, text, cls) {
+  function loadFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      novelText = e.target.result;
+      // 限制在15000字以内避免超出限制
+      if (novelText.length > 15000) {
+        novelText = novelText.substring(0, 15000);
+        document.getElementById('status').textContent = '⚠️ 文件较长，已截取前15000字';
+      } else {
+        document.getElementById('status').textContent = `✅ 已加载：${file.name}（${novelText.length}字）`;
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  function applyNovel() {
+    const role = document.getElementById('role-input').value.trim();
+    if (!novelText) {
+      alert('请先上传小说文件！');
+      return;
+    }
+    if (!role) {
+      alert('请输入要代入的角色名字！');
+      return;
+    }
+    systemPrompt = `你现在是小说中的角色【${role}】。以下是小说原文，请仔细阅读并完全代入这个角色：\n\n${novelText}\n\n请注意：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 只知道小说中已发生的事情\n4. 不要跳出角色`;
+    history = [];
+    addMsg(`✅ 已加载角色【${role}】，可以开始对话了！`, 'ai');
+  }
+
+  function addMsg(text, cls) {
     const div = document.createElement('div');
     div.className = 'msg ' + cls;
     div.textContent = text;
@@ -63,14 +115,22 @@
     const input = document.getElementById('input');
     const text = input.value.trim();
     if (!text || !apiKey) return;
+    if (!systemPrompt) {
+      alert('请先上传小说并点击"应用"！');
+      return;
+    }
     input.value = '';
 
-    addMsg('user', text, 'user');
+    addMsg(text, 'user');
     history.push({ role: 'user', content: text });
 
-    const loading = addMsg('ai', '思考中...', 'ai');
+    const loading = addMsg('思考中...', 'ai');
 
     try {
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history
+      ];
       const res = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
@@ -79,7 +139,7 @@
         },
         body: JSON.stringify({
           model: 'deepseek-chat',
-          messages: history
+          messages: messages
         })
       });
       const data = await res.json();
