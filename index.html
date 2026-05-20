@@ -71,7 +71,6 @@
   if (apiKey) document.getElementById('key-area').style.display = 'none';
   if (currentRole) document.getElementById('role-input').value = currentRole;
 
-  // 恢复历史消息
   savedMessages.forEach(m => renderMsg(m.text, m.cls, m.time, false));
 
   function saveKey() {
@@ -89,9 +88,9 @@
     const reader = new FileReader();
     reader.onload = function(e) {
       novelText = e.target.result;
-      if (novelText.length > 100000) {
-        novelText = novelText.substring(0, 15000);
-        document.getElementById('status').textContent = '⚠️ 文件较长，已截取前15000字';
+      if (novelText.length > 80000) {
+        novelText = novelText.substring(0, 80000);
+        document.getElementById('status').textContent = '⚠️ 文件较长，已截取前8万字';
       } else {
         document.getElementById('status').textContent = `✅ 已加载：${file.name}（${novelText.length}字）`;
       }
@@ -103,7 +102,7 @@
     const role = document.getElementById('role-input').value.trim();
     if (!novelText) { alert('请先上传小说文件！'); return; }
     if (!role) { alert('请输入要代入的角色名字！'); return; }
-    systemPrompt = `你现在是小说中的角色【${role}】。以下是小说原文，请仔细阅读并完全代入这个角色：\n\n${novelText}\n\n请注意：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 只知道小说中已发生的事情\n4. 不要跳出角色`;
+    systemPrompt = `你现在是小说中的角色【${role}】。以下是小说原文，请仔细阅读并完全代入这个角色：\n\n${novelText}\n\n请注意：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 只知道小说中已发生的事情\n4. 不要跳出角色\n5. 每次回复尽量详细，用小说笔法描写，包含动作、神态、心理活动，不少于200字`;
     localStorage.setItem('system_prompt', systemPrompt);
     localStorage.setItem('current_role', role);
     currentRole = role;
@@ -202,6 +201,7 @@
         },
         body: JSON.stringify({
           model: 'deepseek-chat',
+          max_tokens: 2000,
           messages: [{ role: 'system', content: systemPrompt }, ...history]
         })
       });
