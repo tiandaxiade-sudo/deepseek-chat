@@ -7,6 +7,12 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
+  #top-bar { padding: 8px 12px; background: #6a1b9a; display: flex; align-items: center; justify-content: space-between; }
+  #top-bar span { color: white; font-size: 16px; font-weight: bold; }
+  #toggle-btn { background: none; border: none; color: white; font-size: 22px; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+  #toggle-btn:active { background: rgba(255,255,255,0.2); }
+  #controls { overflow: hidden; transition: max-height 0.3s ease; max-height: 600px; }
+  #controls.hidden { max-height: 0; }
   #key-area { padding: 12px; background: #fff8e1; border-bottom: 1px solid #ffe082; display: flex; gap: 8px; }
   #apikey { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
   #save-key { padding: 8px 14px; background: #f57c00; color: white; border: none; border-radius: 8px; cursor: pointer; }
@@ -19,61 +25,83 @@
   #status { font-size: 13px; color: #555; }
   #mode-area { padding: 10px 12px; background: #f3e5f5; border-bottom: 1px solid #ce93d8; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   #mode-area span { font-size: 14px; font-weight: bold; color: #6a1b9a; white-space: nowrap; }
-  #mode-select { flex: 1; padding: 7px; border: 1px solid #ce93d8; border-radius: 8px; font-size: 14px; background: white; min-width: 120px; }
-  #model-select { flex: 1; padding: 7px; border: 1px solid #ce93d8; border-radius: 8px; font-size: 14px; background: white; min-width: 120px; }
+  #mode-select, #model-select { flex: 1; padding: 7px; border: 1px solid #ce93d8; border-radius: 8px; font-size: 14px; background: white; min-width: 120px; }
   #toolbar { padding: 8px 12px; background: #fff; border-bottom: 1px solid #ddd; display: flex; gap: 8px; flex-wrap: wrap; }
   #toolbar button { padding: 6px 14px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
   #export-btn { background: #1a73e8; color: white; }
   #clear-btn { background: #e53935; color: white; }
   #continue-btn { background: #7b1fa2; color: white; }
   #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-  .msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; line-height: 1.8; white-space: pre-wrap; }
+  .msg-wrap { display: flex; flex-direction: column; }
+  .msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; line-height: 1.8; white-space: pre-wrap; cursor: pointer; user-select: none; transition: opacity 0.2s; }
+  .msg:active { opacity: 0.7; }
   .user { background: #1a73e8; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
   .ai { background: white; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 15px; }
   .time { font-size: 11px; opacity: 0.6; margin-top: 4px; }
   #bottom { padding: 12px; background: white; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #ddd; }
   #input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 12px; outline: none; font-size: 15px; min-height: 60px; resize: none; }
-  #send { padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 20px; font-size: 15px; cursor: pointer; align-self: flex-end; }
+  #bottom-bar { display: flex; gap: 8px; align-items: center; }
+  #send { flex: 1; padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 20px; font-size: 15px; cursor: pointer; }
+  #continue-btn2 { padding: 10px 14px; background: #7b1fa2; color: white; border: none; border-radius: 20px; font-size: 13px; cursor: pointer; white-space: nowrap; }
   #hint { font-size: 12px; color: #999; padding: 0 4px; }
-  .model-tag { font-size: 11px; background: #7b1fa2; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+  #context-menu { position: fixed; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 9999; overflow: hidden; min-width: 150px; display: none; }
+  #context-menu button { display: block; width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; font-size: 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
+  #context-menu button:last-child { border-bottom: none; }
+  #context-menu button:active { background: #f5f5f5; }
+  #context-menu .danger { color: #e53935; }
+  #edit-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99999; display: none; align-items: center; justify-content: center; padding: 20px; }
+  #edit-modal.show { display: flex; }
+  #edit-box { background: white; border-radius: 16px; padding: 16px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
+  #edit-box textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; min-height: 150px; resize: vertical; outline: none; }
+  #edit-box .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
+  #edit-box .btn-row button { padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  #edit-cancel { background: #eee; }
+  #edit-save { background: #1a73e8; color: white; }
 </style>
 </head>
 <body>
 
-<div id="key-area">
-  <input id="apikey" type="password" placeholder="粘贴你的 DeepSeek API Key" />
-  <button id="save-key" onclick="saveKey()">保存</button>
+<div id="top-bar">
+  <span>✍️ 小说创作助手</span>
+  <button id="toggle-btn" onclick="toggleControls()" title="显示/隐藏设置">⋯</button>
 </div>
 
-<div id="novel-area">
-  <label>📖 上传小说原文（txt格式，选填）</label>
-  <div id="novel-controls">
-    <input id="file-input" type="file" accept=".txt" onchange="loadFile(event)" />
-    <button id="load-btn" onclick="applyNovel()">应用</button>
+<div id="controls">
+  <div id="key-area">
+    <input id="apikey" type="password" placeholder="粘贴你的 DeepSeek API Key" />
+    <button id="save-key" onclick="saveKey()">保存</button>
   </div>
-  <input id="role-input" type="text" placeholder="角色扮演模式：输入角色名字（其他模式可不填）" />
-  <div id="status">📂 未加载文件</div>
-</div>
 
-<div id="mode-area">
-  <span>✍️ 模式：</span>
-  <select id="mode-select" onchange="onModeChange()">
-    <option value="roleplay">🎭 角色扮演</option>
-    <option value="continue">📝 续写小说</option>
-    <option value="scene">🎬 场景创作</option>
-    <option value="full">📚 完整小说模式</option>
-  </select>
-  <span>🤖 模型：</span>
-  <select id="model-select">
-    <option value="deepseek-chat">D老师（普通）</option>
-    <option value="deepseek-reasoner">D老师 R1（更强）</option>
-  </select>
-</div>
+  <div id="novel-area">
+    <label>📖 上传小说原文（txt格式，选填）</label>
+    <div id="novel-controls">
+      <input id="file-input" type="file" accept=".txt" onchange="loadFile(event)" />
+      <button id="load-btn" onclick="applyNovel()">应用</button>
+    </div>
+    <input id="role-input" type="text" placeholder="角色扮演模式：输入角色名字（其他模式可不填）" />
+    <div id="status">📂 未加载文件</div>
+  </div>
 
-<div id="toolbar">
-  <button id="export-btn" onclick="exportChat()">📥 导出</button>
-  <button id="continue-btn" onclick="continueWrite()">▶️ 继续写</button>
-  <button id="clear-btn" onclick="clearChat()">🗑️ 清空</button>
+  <div id="mode-area">
+    <span>✍️ 模式：</span>
+    <select id="mode-select" onchange="onModeChange()">
+      <option value="roleplay">🎭 角色扮演</option>
+      <option value="continue">📝 续写小说</option>
+      <option value="scene">🎬 场景创作</option>
+      <option value="full">📚 完整小说模式</option>
+    </select>
+    <span>🤖 模型：</span>
+    <select id="model-select">
+      <option value="deepseek-chat">D老师（普通）</option>
+      <option value="deepseek-reasoner">D老师 R1（更强）</option>
+    </select>
+  </div>
+
+  <div id="toolbar">
+    <button id="export-btn" onclick="exportChat()">📥 导出</button>
+    <button id="continue-btn" onclick="continueWrite()">▶️ 继续写</button>
+    <button id="clear-btn" onclick="clearChat()">🗑️ 清空</button>
+  </div>
 </div>
 
 <div id="chat"></div>
@@ -81,7 +109,28 @@
 <div id="bottom">
   <div id="hint">💡 选好模式后点"应用"，然后开始创作</div>
   <textarea id="input" placeholder="输入内容..." onkeydown="if(event.ctrlKey&&event.key==='Enter')send()"></textarea>
-  <button id="send" onclick="send()">发送（Ctrl+Enter）</button>
+  <div id="bottom-bar">
+    <button id="continue-btn2" onclick="continueWrite()">▶️ 继续</button>
+    <button id="send" onclick="send()">发送</button>
+  </div>
+</div>
+
+<div id="context-menu">
+  <button onclick="copyMsg()">📋 复制</button>
+  <button onclick="editMsg()">✏️ 编辑</button>
+  <button onclick="deleteMsg()" class="danger">🗑️ 删除</button>
+  <button onclick="closeMenu()">✖️ 取消</button>
+</div>
+
+<div id="edit-modal">
+  <div id="edit-box">
+    <div style="font-weight:bold;font-size:15px">编辑内容</div>
+    <textarea id="edit-textarea"></textarea>
+    <div class="btn-row">
+      <button id="edit-cancel" onclick="closeEdit()">取消</button>
+      <button id="edit-save" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -91,18 +140,29 @@
   let novelText = '';
   let systemPrompt = localStorage.getItem('system_prompt') || '';
   let currentRole = localStorage.getItem('current_role') || '';
+  let activeWrap = null;
+  let activeMsgIndex = -1;
+  let longPressTimer = null;
+  let controlsVisible = localStorage.getItem('controls_visible') !== 'false';
 
   if (apiKey) document.getElementById('key-area').style.display = 'none';
   if (currentRole) document.getElementById('role-input').value = currentRole;
+  if (!controlsVisible) document.getElementById('controls').classList.add('hidden');
+  savedMessages.forEach((m, i) => renderMsg(m.text, m.cls, m.time, false, i));
 
-  savedMessages.forEach(m => renderMsg(m.text, m.cls, m.time, false));
+  function toggleControls() {
+    const controls = document.getElementById('controls');
+    controlsVisible = !controlsVisible;
+    controls.classList.toggle('hidden', !controlsVisible);
+    localStorage.setItem('controls_visible', controlsVisible);
+  }
 
   function saveKey() {
     apiKey = document.getElementById('apikey').value.trim();
     if (apiKey) {
       localStorage.setItem('ds_key', apiKey);
       document.getElementById('key-area').style.display = 'none';
-      addMsg('✅ API Key 已保存，可以开始使用了！', 'ai');
+      addMsg('✅ API Key 已保存！', 'ai');
     }
   }
 
@@ -126,7 +186,7 @@
     const novelContext = novelText ? `\n\n以下是小说原文供参考：\n${novelText}` : '';
     switch(mode) {
       case 'roleplay':
-        return `你现在是小说中的角色【${role}】。请完全代入这个角色：${novelContext}\n\n规则：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 不要跳出角色\n4. 每次回复不少于1000字，包含动作、神态、心理活动，用小说笔法详细展开，情节要有起伏`;
+        return `你现在是小说中的角色【${role}】。请完全代入这个角色：${novelContext}\n\n规则：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 不要跳出角色\n4. 每次回复不少于1000字，包含动作、神态、心理活动，用小说笔法详细展开`;
       case 'continue':
         return `你是一位专业网络小说作家，擅长续写小说。${novelContext}\n\n规则：\n1. 用户提供前文，你负责续写\n2. 保持原文的文风、人物性格和故事走向\n3. 每次续写不少于1500字\n4. 情节要有起伏，对话要生动，场景要细腻\n5. 直接输出续写内容，不要加任何说明\n6. 如果用户说"继续"，接着上文继续写`;
       case 'scene':
@@ -149,18 +209,17 @@
     const modeNames = { roleplay: '角色扮演', continue: '续写小说', scene: '场景创作', full: '完整小说模式' };
     const model = document.getElementById('model-select').value;
     const modelName = model === 'deepseek-reasoner' ? 'D老师 R1' : 'D老师';
-    addMsg(`✅ 已切换到【${modeNames[mode]}】模式，使用【${modelName}】${role ? '，角色：' + role : ''}，开始吧！`, 'ai');
+    addMsg(`✅ 已切换到【${modeNames[mode]}】，使用【${modelName}】${role ? '，角色：' + role : ''}，开始吧！`, 'ai');
   }
 
   function onModeChange() {
-    const mode = document.getElementById('mode-select').value;
     const hints = {
       roleplay: '💡 和角色直接对话，D老师会以角色身份详细回应',
-      continue: '💡 粘贴小说前文，D老师会续写后续情节（发"继续"可接着写）',
-      scene: '💡 描述你想要的场景，例如"写一段两人初次见面的场景"（发"继续"可延续）',
-      full: '💡 混合模式：可对话、可续写、可创作场景（发"继续"可接着写）'
+      continue: '💡 粘贴小说前文，D老师续写（点"继续"可接着写）',
+      scene: '💡 描述你想要的场景，D老师帮你写出来',
+      full: '💡 混合模式：可对话、可续写、可创作场景'
     };
-    document.getElementById('hint').textContent = hints[mode];
+    document.getElementById('hint').textContent = hints[document.getElementById('mode-select').value];
   }
 
   function continueWrite() {
@@ -173,16 +232,85 @@
     return `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
   }
 
-  function renderMsg(text, cls, time, save=true) {
+  function showMenu(e, wrap, index) {
+    e.preventDefault();
+    activeWrap = wrap;
+    activeMsgIndex = index;
+    const menu = document.getElementById('context-menu');
+    menu.style.display = 'block';
+    const x = Math.min(e.clientX || e.touches?.[0]?.clientX || 100, window.innerWidth - 160);
+    const y = Math.min(e.clientY || e.touches?.[0]?.clientY || 100, window.innerHeight - 180);
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+  }
+
+  function closeMenu() {
+    document.getElementById('context-menu').style.display = 'none';
+    activeWrap = null;
+    activeMsgIndex = -1;
+  }
+
+  function copyMsg() {
+    if (activeMsgIndex < 0) return;
+    navigator.clipboard.writeText(savedMessages[activeMsgIndex].text).then(() => {
+      closeMenu();
+      addMsg('📋 已复制到剪贴板', 'ai');
+    });
+  }
+
+  function editMsg() {
+    if (activeMsgIndex < 0) return;
+    document.getElementById('edit-textarea').value = savedMessages[activeMsgIndex].text;
+    document.getElementById('edit-modal').classList.add('show');
+    closeMenu();
+  }
+
+  function closeEdit() {
+    document.getElementById('edit-modal').classList.remove('show');
+  }
+
+  function saveEdit() {
+    const newText = document.getElementById('edit-textarea').value.trim();
+    if (!newText) return;
+    savedMessages[activeMsgIndex].text = newText;
+    localStorage.setItem('chat_messages', JSON.stringify(savedMessages));
+    const msgEl = activeWrap ? activeWrap.querySelector('.msg') : null;
+    if (msgEl) msgEl.textContent = newText;
+    if (activeMsgIndex < history.length) {
+      history[activeMsgIndex].content = newText;
+      localStorage.setItem('chat_history', JSON.stringify(history));
+    }
+    closeEdit();
+  }
+
+  function deleteMsg() {
+    if (activeMsgIndex < 0) return;
+    if (!confirm('确定删除这条消息？')) { closeMenu(); return; }
+    savedMessages.splice(activeMsgIndex, 1);
+    localStorage.setItem('chat_messages', JSON.stringify(savedMessages));
+    if (activeWrap) activeWrap.remove();
+    closeMenu();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('context-menu').contains(e.target)) closeMenu();
+  });
+
+  function renderMsg(text, cls, time, save=true, index=null) {
     const wrap = document.createElement('div');
-    wrap.style.display = 'flex';
-    wrap.style.flexDirection = 'column';
+    wrap.className = 'msg-wrap';
     wrap.style.alignItems = cls === 'user' ? 'flex-end' : 'flex-start';
     const div = document.createElement('div');
     div.className = 'msg ' + cls;
     div.textContent = text;
+    const msgIndex = index !== null ? index : savedMessages.length;
+    div.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, wrap, msgIndex), 600); });
+    div.addEventListener('touchend', () => clearTimeout(longPressTimer));
+    div.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+    div.addEventListener('contextmenu', (e) => showMenu(e, wrap, msgIndex));
     const t = document.createElement('div');
     t.className = 'time';
+    t.style.alignSelf = cls === 'user' ? 'flex-end' : 'flex-start';
     t.textContent = time;
     wrap.appendChild(div);
     wrap.appendChild(t);
@@ -201,11 +329,9 @@
 
   function exportChat() {
     if (savedMessages.length === 0) { alert('没有聊天记录可导出！'); return; }
-    let content = `小说创作记录 - ${currentRole || 'AI'}\n`;
-    content += '='.repeat(30) + '\n\n';
+    let content = `小说创作记录 - ${currentRole || 'D老师'}\n${'='.repeat(30)}\n\n`;
     savedMessages.forEach(m => {
-      const role = m.cls === 'user' ? '我' : (currentRole || 'D老师');
-      content += `[${m.time}] ${role}：\n${m.text}\n\n`;
+      content += `[${m.time}] ${m.cls === 'user' ? '我' : (currentRole || 'D老师')}：\n${m.text}\n\n`;
     });
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -218,8 +344,7 @@
 
   function clearChat() {
     if (!confirm('确定要清空所有聊天记录吗？')) return;
-    savedMessages = [];
-    history = [];
+    savedMessages = []; history = [];
     localStorage.setItem('chat_messages', '[]');
     localStorage.setItem('chat_history', '[]');
     document.getElementById('chat').innerHTML = '';
@@ -232,15 +357,12 @@
     if (!text || !apiKey) return;
     if (!systemPrompt) { alert('请先点击"应用"按钮设置模式！'); return; }
     input.value = '';
-
     addMsg(text, 'user');
     history.push({ role: 'user', content: text });
     localStorage.setItem('chat_history', JSON.stringify(history));
-
     const chatDiv = document.getElementById('chat');
     const wrap = document.createElement('div');
-    wrap.style.display = 'flex';
-    wrap.style.flexDirection = 'column';
+    wrap.className = 'msg-wrap';
     wrap.style.alignItems = 'flex-start';
     const loading = document.createElement('div');
     loading.className = 'msg ai';
@@ -248,24 +370,21 @@
     wrap.appendChild(loading);
     chatDiv.appendChild(wrap);
     chatDiv.scrollTop = 9999;
-
     try {
       const model = document.getElementById('model-select').value;
       const res = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify({
-          model: model,
-          max_tokens: 4000,
-          messages: [{ role: 'system', content: systemPrompt }, ...history]
-        })
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({ model, max_tokens: 4000, messages: [{ role: 'system', content: systemPrompt }, ...history] })
       });
       const data = await res.json();
       const reply = data.choices[0].message.content;
       loading.textContent = reply;
+      const msgIndex = savedMessages.length;
+      loading.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, wrap, msgIndex), 600); });
+      loading.addEventListener('touchend', () => clearTimeout(longPressTimer));
+      loading.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+      loading.addEventListener('contextmenu', (e) => showMenu(e, wrap, msgIndex));
       const time = getTime();
       const t = document.createElement('div');
       t.className = 'time';
