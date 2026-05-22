@@ -42,7 +42,7 @@
   #send { flex: 1; padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 20px; font-size: 15px; cursor: pointer; }
   #continue-btn2 { padding: 10px 14px; background: #7b1fa2; color: white; border: none; border-radius: 20px; font-size: 13px; cursor: pointer; white-space: nowrap; }
   #hint { font-size: 12px; color: #999; padding: 0 4px; }
-  #context-menu { position: fixed; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 9999; overflow: hidden; min-width: 150px; display: none; }
+  #context-menu { position: fixed; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 9999; overflow: hidden; min-width: 160px; display: none; }
   #context-menu button { display: block; width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; font-size: 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
   #context-menu button:last-child { border-bottom: none; }
   #context-menu button:active { background: #f5f5f5; }
@@ -94,7 +94,7 @@
   </div>
   <div id="toolbar">
     <button id="export-btn" onclick="exportChat()">📥 导出</button>
-    <button id="clear-btn" onclick="clearChat()">🗑️ 清空</button>
+    <button id="clear-btn" onclick="clearChat()">🗑️ 清空全部</button>
   </div>
 </div>
 
@@ -112,7 +112,8 @@
 <div id="context-menu">
   <button onclick="copyMsg()">📋 复制</button>
   <button onclick="editMsg()">✏️ 编辑</button>
-  <button onclick="deleteMsg()" class="danger">🗑️ 删除此条及之后所有消息</button>
+  <button onclick="deleteFromHere()" class="danger">🗑️ 从这里删到最后</button>
+  <button onclick="deleteSingle()" class="danger">❌ 只删这一条</button>
   <button onclick="closeMenu()">✖️ 取消</button>
 </div>
 
@@ -129,21 +130,30 @@
 
 <script>
   let apiKey = localStorage.getItem('ds_key') || '';
-  let history = JSON.parse(localStorage.getItem('chat_history') || '[]');
-  let savedMessages = JSON.parse(localStorage.getItem('chat_messages') || '[]');
-  let novelText = '';
   let systemPrompt = localStorage.getItem('system_prompt') || '';
   let currentRole = localStorage.getItem('current_role') || '';
-  let activeWrap = null;
-  let activeMsgIndex = -1;
-  let longPressTimer = null;
+  let novelText = '';
   let controlsVisible = localStorage.getItem('controls_visible') !== 'false';
-  let msgWraps = []; // 存储所有消息的DOM元素
+  let longPressTimer = null;
+  let activeMsgIndex = -1;
+
+  // 核心数据：messages 同时作为显示记录和 AI history
+  // 每条: { role: 'user'|'assistant', content: string, time: string }
+  let messages = JSON.parse(localStorage.getItem('messages_v2') || '[]');
+
+  // DOM 元素列表，与 messages 一一对应
+  let domList = [];
 
   if (apiKey) document.getElementById('key-area').style.display = 'none';
   if (currentRole) document.getElementById('role-input').value = currentRole;
   if (!controlsVisible) document.getElementById('controls').classList.add('hidden');
-  savedMessages.forEach((m, i) => renderMsg(m.text, m.cls, m.time, false, i));
+
+  // 初始化渲染
+  messages.forEach((m, i) => renderMsgDOM(m, i));
+
+  function save() {
+    localStorage.setItem('messages_v2', JSON.stringify(messages));
+  }
 
   function toggleControls() {
     controlsVisible = !controlsVisible;
@@ -156,7 +166,7 @@
     if (apiKey) {
       localStorage.setItem('ds_key', apiKey);
       document.getElementById('key-area').style.display = 'none';
-      addMsg('✅ API Key 已保存！', 'ai');
+      appendMsg('assistant', '✅ API Key 已保存！');
     }
   }
 
@@ -168,7 +178,7 @@
       novelText = e.target.result;
       if (novelText.length > 80000) {
         novelText = novelText.substring(0, 80000);
-        document.getElementById('status').textContent = '⚠️ 文件较长，已截取前8万字';
+        document.getElementById('status').textContent = '⚠️ 已截取前8万字';
       } else {
         document.getElementById('status').textContent = `✅ 已加载：${file.name}（${novelText.length}字）`;
       }
@@ -177,42 +187,34 @@
   }
 
   function getSystemPrompt(mode, role) {
-    const novelContext = novelText ? `\n\n以下是小说原文供参考：\n${novelText}` : '';
+    const ctx = novelText ? `\n\n小说原文参考：\n${novelText}` : '';
     switch(mode) {
-      case 'roleplay':
-        return `你现在是小说中的角色【${role}】。请完全代入这个角色：${novelContext}\n\n规则：\n1. 始终以${role}的身份说话，使用第一人称\n2. 保持角色的性格、语气和说话方式\n3. 不要跳出角色\n4. 每次回复不少于1000字，包含动作、神态、心理活动，用小说笔法详细展开`;
-      case 'continue':
-        return `你是一位专业网络小说作家，擅长续写小说。${novelContext}\n\n规则：\n1. 用户提供前文，你负责续写\n2. 保持原文的文风、人物性格和故事走向\n3. 每次续写不少于1500字\n4. 情节要有起伏，对话要生动，场景要细腻\n5. 直接输出续写内容，不要加任何说明\n6. 如果用户说"继续"，接着上文继续写`;
-      case 'scene':
-        return `你是一位专业网络小说作家，擅长场景创作。${novelContext}\n\n规则：\n1. 根据用户描述的场景指令进行创作\n2. 每个场景不少于1200字\n3. 要有生动的对话、细腻的动作描写和人物心理\n4. 语言要有张力，情感要饱满\n5. 直接输出场景内容，不要加任何说明\n6. 如果用户说"继续"，延续场景继续写`;
-      case 'full':
-        return `你是一位专业网络小说作家，同时具备角色扮演、续写和场景创作能力。${novelContext}\n\n规则：\n1. 可以扮演任何角色和用户对话\n2. 可以续写故事情节\n3. 可以根据指令创作任意场景\n4. 每次回复不少于1200字，用小说笔法展开\n5. 语言生动，情节丰富，人物鲜活\n6. 如果用户说"继续"，接着上文继续写`;
+      case 'roleplay': return `你现在是小说中的角色【${role}】。${ctx}\n\n规则：\n1.始终以${role}身份用第一人称说话\n2.保持角色性格语气\n3.不要跳出角色\n4.每次回复不少于1000字，包含动作神态心理活动，用小说笔法展开`;
+      case 'continue': return `你是专业网络小说作家，擅长续写。${ctx}\n\n规则：\n1.用户提供前文你来续写\n2.保持原文文风人物性格\n3.每次不少于1500字\n4.情节有起伏，对话生动，场景细腻\n5.直接输出续写内容不加说明\n6.用户说"继续"就接着写`;
+      case 'scene': return `你是专业网络小说作家，擅长场景创作。${ctx}\n\n规则：\n1.根据用户描述创作场景\n2.每个场景不少于1200字\n3.有生动对话、细腻动作和人物心理\n4.语言有张力情感饱满\n5.直接输出内容不加说明\n6.用户说"继续"就延续场景`;
+      case 'full': return `你是专业网络小说作家，具备角色扮演、续写和场景创作能力。${ctx}\n\n规则：\n1.可扮演角色对话\n2.可续写情节\n3.可创作任意场景\n4.每次不少于1200字，小说笔法展开\n5.语言生动情节丰富人物鲜活\n6.用户说"继续"就接着写`;
     }
   }
 
   function applyNovel() {
     const role = document.getElementById('role-input').value.trim();
     const mode = document.getElementById('mode-select').value;
-    if (mode === 'roleplay' && !role) { alert('角色扮演模式请填写角色名字！'); return; }
+    if (mode === 'roleplay' && !role) { alert('请填写角色名字！'); return; }
     systemPrompt = getSystemPrompt(mode, role);
     localStorage.setItem('system_prompt', systemPrompt);
     localStorage.setItem('current_role', role);
     currentRole = role;
-    history = [];
-    localStorage.setItem('chat_history', '[]');
-    const modeNames = { roleplay: '角色扮演', continue: '续写小说', scene: '场景创作', full: '完整小说模式' };
-    const model = document.getElementById('model-select').value;
-    const modelName = model === 'deepseek-reasoner' ? 'D老师 R1' : 'D老师';
-    addMsg(`✅ 已切换到【${modeNames[mode]}】，使用【${modelName}】${role ? '，角色：' + role : ''}，开始吧！`, 'ai');
+    // 清空对话重新开始
+    messages = []; domList = [];
+    document.getElementById('chat').innerHTML = '';
+    save();
+    const modeNames = { roleplay:'角色扮演', continue:'续写小说', scene:'场景创作', full:'完整小说模式' };
+    const modelName = document.getElementById('model-select').value === 'deepseek-reasoner' ? 'D老师R1' : 'D老师';
+    appendMsg('assistant', `✅ 已切换到【${modeNames[mode]}】，使用【${modelName}】${role?'，角色：'+role:''}，开始吧！`);
   }
 
   function onModeChange() {
-    const hints = {
-      roleplay: '💡 和角色直接对话，D老师会以角色身份详细回应',
-      continue: '💡 粘贴小说前文，D老师续写（点"继续"可接着写）',
-      scene: '💡 描述你想要的场景，D老师帮你写出来',
-      full: '💡 混合模式：可对话、可续写、可创作场景'
-    };
+    const hints = { roleplay:'💡 和角色对话，D老师以角色身份回应', continue:'💡 粘贴前文，D老师续写（点继续可接着写）', scene:'💡 描述场景，D老师帮你写出来', full:'💡 混合模式：可对话可续写可创作' };
     document.getElementById('hint').textContent = hints[document.getElementById('mode-select').value];
   }
 
@@ -226,35 +228,68 @@
     return `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
   }
 
-  function showMenu(e, wrap, index) {
-    e.preventDefault();
-    activeWrap = wrap;
+  function renderMsgDOM(msg, index) {
+    const cls = msg.role === 'user' ? 'user' : 'ai';
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-wrap';
+    wrap.style.alignItems = cls === 'user' ? 'flex-end' : 'flex-start';
+
+    const div = document.createElement('div');
+    div.className = 'msg ' + cls;
+    div.textContent = msg.content;
+
+    div.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, index), 600); });
+    div.addEventListener('touchend', () => clearTimeout(longPressTimer));
+    div.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+    div.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e, index); });
+
+    const t = document.createElement('div');
+    t.className = 'time';
+    t.style.alignSelf = cls === 'user' ? 'flex-end' : 'flex-start';
+    t.textContent = msg.time;
+
+    wrap.appendChild(div);
+    wrap.appendChild(t);
+    document.getElementById('chat').appendChild(wrap);
+    document.getElementById('chat').scrollTop = 9999;
+    domList[index] = wrap;
+    return wrap;
+  }
+
+  function appendMsg(role, content) {
+    const msg = { role, content, time: getTime() };
+    const index = messages.length;
+    messages.push(msg);
+    save();
+    renderMsgDOM(msg, index);
+  }
+
+  function showMenu(e, index) {
     activeMsgIndex = index;
     const menu = document.getElementById('context-menu');
     menu.style.display = 'block';
-    const x = Math.min(e.clientX || e.touches?.[0]?.clientX || 100, window.innerWidth - 170);
-    const y = Math.min(e.clientY || e.touches?.[0]?.clientY || 100, window.innerHeight - 200);
-    menu.style.left = x + 'px';
-    menu.style.top = y + 'px';
+    const clientX = e.clientX || e.touches?.[0]?.clientX || 100;
+    const clientY = e.clientY || e.touches?.[0]?.clientY || 100;
+    menu.style.left = Math.min(clientX, window.innerWidth - 180) + 'px';
+    menu.style.top = Math.min(clientY, window.innerHeight - 220) + 'px';
   }
 
   function closeMenu() {
     document.getElementById('context-menu').style.display = 'none';
-    activeWrap = null;
     activeMsgIndex = -1;
   }
 
   function copyMsg() {
     if (activeMsgIndex < 0) return;
-    navigator.clipboard.writeText(savedMessages[activeMsgIndex].text).then(() => {
+    navigator.clipboard.writeText(messages[activeMsgIndex].content).then(() => {
       closeMenu();
-      addMsg('📋 已复制到剪贴板', 'ai');
+      appendMsg('assistant', '📋 已复制到剪贴板');
     });
   }
 
   function editMsg() {
     if (activeMsgIndex < 0) return;
-    document.getElementById('edit-textarea').value = savedMessages[activeMsgIndex].text;
+    document.getElementById('edit-textarea').value = messages[activeMsgIndex].content;
     document.getElementById('edit-modal').classList.add('show');
     closeMenu();
   }
@@ -266,31 +301,47 @@
   function saveEdit() {
     const newText = document.getElementById('edit-textarea').value.trim();
     if (!newText || activeMsgIndex < 0) return;
-    savedMessages[activeMsgIndex].text = newText;
-    localStorage.setItem('chat_messages', JSON.stringify(savedMessages));
-    const msgEl = msgWraps[activeMsgIndex] ? msgWraps[activeMsgIndex].querySelector('.msg') : null;
+    messages[activeMsgIndex].content = newText;
+    save();
+    const msgEl = domList[activeMsgIndex]?.querySelector('.msg');
     if (msgEl) msgEl.textContent = newText;
-    if (activeMsgIndex < history.length) {
-      history[activeMsgIndex].content = newText;
-      localStorage.setItem('chat_history', JSON.stringify(history));
-    }
     closeEdit();
   }
 
-  function deleteMsg() {
+  // 删除这条及之后所有
+  function deleteFromHere() {
     if (activeMsgIndex < 0) return;
-    if (!confirm(`确定删除第${activeMsgIndex + 1}条及之后的所有消息？`)) { closeMenu(); return; }
-    // 删除activeMsgIndex之后所有消息（包括自己）
-    const removed = savedMessages.splice(activeMsgIndex);
-    localStorage.setItem('chat_messages', JSON.stringify(savedMessages));
-    // 删除history中对应部分
-    history.splice(activeMsgIndex);
-    localStorage.setItem('chat_history', JSON.stringify(history));
+    if (!confirm(`删除第${activeMsgIndex+1}条及之后所有消息？`)) { closeMenu(); return; }
     // 删除DOM
-    for (let i = activeMsgIndex; i < msgWraps.length; i++) {
-      if (msgWraps[i]) msgWraps[i].remove();
+    for (let i = activeMsgIndex; i < domList.length; i++) {
+      if (domList[i]) domList[i].remove();
     }
-    msgWraps.splice(activeMsgIndex);
+    // 删除数据
+    messages.splice(activeMsgIndex);
+    domList.splice(activeMsgIndex);
+    save();
+    closeMenu();
+  }
+
+  // 只删这一条
+  function deleteSingle() {
+    if (activeMsgIndex < 0) return;
+    if (!confirm('只删除这一条消息？')) { closeMenu(); return; }
+    if (domList[activeMsgIndex]) domList[activeMsgIndex].remove();
+    messages.splice(activeMsgIndex, 1);
+    domList.splice(activeMsgIndex, 1);
+    // 重建索引
+    domList.forEach((wrap, i) => {
+      if (wrap) {
+        const div = wrap.querySelector('.msg');
+        if (div) {
+          div.ontouchstart = null;
+          div.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, i), 600); });
+          div.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e, i); });
+        }
+      }
+    });
+    save();
     closeMenu();
   }
 
@@ -298,108 +349,68 @@
     if (!document.getElementById('context-menu').contains(e.target)) closeMenu();
   });
 
-  function renderMsg(text, cls, time, save=true, index=null) {
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-wrap';
-    wrap.style.alignItems = cls === 'user' ? 'flex-end' : 'flex-start';
-    const div = document.createElement('div');
-    div.className = 'msg ' + cls;
-    div.textContent = text;
-    const msgIndex = index !== null ? index : savedMessages.length;
-    msgWraps[msgIndex] = wrap;
-    div.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, wrap, msgIndex), 600); });
-    div.addEventListener('touchend', () => clearTimeout(longPressTimer));
-    div.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-    div.addEventListener('contextmenu', (e) => showMenu(e, wrap, msgIndex));
-    const t = document.createElement('div');
-    t.className = 'time';
-    t.style.alignSelf = cls === 'user' ? 'flex-end' : 'flex-start';
-    t.textContent = time;
-    wrap.appendChild(div);
-    wrap.appendChild(t);
-    document.getElementById('chat').appendChild(wrap);
-    document.getElementById('chat').scrollTop = 9999;
-    if (save) {
-      savedMessages.push({ text, cls, time });
-      localStorage.setItem('chat_messages', JSON.stringify(savedMessages));
-    }
-    return div;
-  }
-
-  function addMsg(text, cls) {
-    return renderMsg(text, cls, getTime(), true);
-  }
-
   function exportChat() {
-    if (savedMessages.length === 0) { alert('没有聊天记录可导出！'); return; }
-    let content = `小说创作记录 - ${currentRole || 'D老师'}\n${'='.repeat(30)}\n\n`;
-    savedMessages.forEach(m => {
-      content += `[${m.time}] ${m.cls === 'user' ? '我' : (currentRole || 'D老师')}：\n${m.text}\n\n`;
+    if (messages.length === 0) { alert('没有聊天记录！'); return; }
+    let content = `小说创作记录 - ${currentRole||'D老师'}\n${'='.repeat(30)}\n\n`;
+    messages.forEach(m => {
+      content += `[${m.time}] ${m.role==='user'?'我':(currentRole||'D老师')}：\n${m.content}\n\n`;
     });
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `小说创作_${currentRole || 'D老师'}_${new Date().toLocaleDateString()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `小说创作_${currentRole||'D老师'}_${new Date().toLocaleDateString()}.txt`;
+    a.click(); URL.revokeObjectURL(url);
   }
 
   function clearChat() {
-    if (!confirm('确定要清空所有聊天记录吗？')) return;
-    savedMessages = []; history = []; msgWraps = [];
-    localStorage.setItem('chat_messages', '[]');
-    localStorage.setItem('chat_history', '[]');
+    if (!confirm('确定清空所有记录？')) return;
+    messages = []; domList = [];
     document.getElementById('chat').innerHTML = '';
-    addMsg('🗑️ 聊天记录已清空', 'ai');
+    save();
+    appendMsg('assistant', '🗑️ 已清空');
   }
 
   async function send() {
     const input = document.getElementById('input');
     const text = input.value.trim();
     if (!text || !apiKey) return;
-    if (!systemPrompt) { alert('请先点击"应用"按钮设置模式！'); return; }
+    if (!systemPrompt) { alert('请先点击"应用"设置模式！'); return; }
     input.value = '';
-    addMsg(text, 'user');
-    history.push({ role: 'user', content: text });
-    localStorage.setItem('chat_history', JSON.stringify(history));
-    const chatDiv = document.getElementById('chat');
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-wrap';
-    wrap.style.alignItems = 'flex-start';
-    const loading = document.createElement('div');
-    loading.className = 'msg ai';
-    loading.textContent = '✍️ 创作中...';
-    wrap.appendChild(loading);
-    chatDiv.appendChild(wrap);
-    chatDiv.scrollTop = 9999;
+
+    appendMsg('user', text);
+
+    // loading
+    const loadWrap = document.createElement('div');
+    loadWrap.className = 'msg-wrap';
+    loadWrap.style.alignItems = 'flex-start';
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'msg ai';
+    loadDiv.textContent = '✍️ 创作中...';
+    loadWrap.appendChild(loadDiv);
+    document.getElementById('chat').appendChild(loadWrap);
+    document.getElementById('chat').scrollTop = 9999;
+
     try {
       const model = document.getElementById('model-select').value;
+      // 用 messages 直接构建 history（排除系统提示条）
+      const apiMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map(m => ({ role: m.role, content: m.content }))
+      ];
       const res = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify({ model, max_tokens: 4000, messages: [{ role: 'system', content: systemPrompt }, ...history] })
+        body: JSON.stringify({ model, max_tokens: 4000, messages: apiMessages })
       });
       const data = await res.json();
       const reply = data.choices[0].message.content;
-      loading.textContent = reply;
-      const msgIndex = savedMessages.length;
-      msgWraps[msgIndex] = wrap;
-      loading.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, wrap, msgIndex), 600); });
-      loading.addEventListener('touchend', () => clearTimeout(longPressTimer));
-      loading.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-      loading.addEventListener('contextmenu', (e) => showMenu(e, wrap, msgIndex));
-      const time = getTime();
-      const t = document.createElement('div');
-      t.className = 'time';
-      t.textContent = time;
-      wrap.appendChild(t);
-      history.push({ role: 'assistant', content: reply });
-      localStorage.setItem('chat_history', JSON.stringify(history));
-      savedMessages.push({ text: reply, cls: 'ai', time });
-      localStorage.setItem('chat_messages', JSON.stringify(savedMessages));
+
+      // 移除 loading，正式添加
+      loadWrap.remove();
+      appendMsg('assistant', reply);
     } catch (e) {
-      loading.textContent = '出错了，请检查 API Key 是否正确';
+      loadWrap.remove();
+      appendMsg('assistant', '出错了，请检查 API Key 是否正确');
     }
   }
 </script>
