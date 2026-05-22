@@ -46,14 +46,19 @@
   #context-menu button:last-child { border-bottom: none; }
   #context-menu button:active { background: #f5f5f5; }
   .danger { color: #e53935; }
-  #edit-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99999; display: none; align-items: center; justify-content: center; padding: 20px; }
-  #edit-modal.show { display: flex; }
-  #edit-box { background: white; border-radius: 16px; padding: 16px; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
-  #edit-box textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; min-height: 150px; resize: vertical; outline: none; }
-  .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
-  .btn-row button { padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
-  #edit-cancel { background: #eee; }
-  #edit-save { background: #1a73e8; color: white; }
+  /* 自定义弹窗 */
+  .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .modal-box { background: white; border-radius: 16px; padding: 20px; width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-box .modal-title { font-size: 16px; font-weight: bold; }
+  .modal-box .modal-msg { font-size: 14px; color: #555; }
+  .modal-box .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-box .modal-btns button { padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .btn-cancel { background: #eee; color: #333; }
+  .btn-confirm { background: #e53935; color: white; }
+  .btn-confirm-blue { background: #1a73e8; color: white; }
+  /* 编辑弹窗 */
+  #edit-modal .modal-box { max-width: 500px; }
+  #edit-modal textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; min-height: 150px; resize: vertical; outline: none; }
 </style>
 </head>
 <body>
@@ -116,13 +121,26 @@
   <button onclick="closeMenu()">✖️ 取消</button>
 </div>
 
-<div id="edit-modal">
-  <div id="edit-box">
-    <div style="font-weight:bold;font-size:15px">编辑内容</div>
+<!-- 确认弹窗 -->
+<div id="confirm-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title" id="confirm-title">确认操作</div>
+    <div class="modal-msg" id="confirm-msg"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">取消</button>
+      <button class="btn-confirm" id="confirm-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div id="edit-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">编辑内容</div>
     <textarea id="edit-textarea"></textarea>
-    <div class="btn-row">
-      <button id="edit-cancel" onclick="closeEdit()">取消</button>
-      <button id="edit-save" onclick="saveEdit()">保存</button>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeEdit()">取消</button>
+      <button class="btn-confirm-blue" onclick="saveEdit()">保存</button>
     </div>
   </div>
 </div>
@@ -134,16 +152,13 @@
   let novelText = '';
   let controlsVisible = localStorage.getItem('controls_visible') !== 'false';
   let longPressTimer = null;
-  let activeIndex = -1; // 当前操作的消息索引
-
-  // 唯一数据源
+  let activeIndex = -1;
   let messages = JSON.parse(localStorage.getItem('messages_v2') || '[]');
 
   function save() {
     localStorage.setItem('messages_v2', JSON.stringify(messages));
   }
 
-  // 重新渲染所有消息（确保索引准确）
   function rerender() {
     const chat = document.getElementById('chat');
     chat.innerHTML = '';
@@ -154,31 +169,27 @@
     const cls = msg.role === 'user' ? 'user' : 'ai';
     const wrap = document.createElement('div');
     wrap.className = 'msg-wrap';
-    wrap.dataset.index = index; // 关键：把索引存在DOM上
+    wrap.dataset.index = String(index);
     wrap.style.alignItems = cls === 'user' ? 'flex-end' : 'flex-start';
-
     const div = document.createElement('div');
     div.className = 'msg ' + cls;
     div.textContent = msg.content;
-
-    // 长按事件
     div.addEventListener('touchstart', (e) => {
       const idx = parseInt(wrap.dataset.index);
-      longPressTimer = setTimeout(() => showMenu(e.touches[0].clientX, e.touches[0].clientY, idx), 600);
+      longPressTimer = setTimeout(() => {
+        showMenu(e.touches[0].clientX, e.touches[0].clientY, idx);
+      }, 600);
     });
     div.addEventListener('touchend', () => clearTimeout(longPressTimer));
     div.addEventListener('touchmove', () => clearTimeout(longPressTimer));
     div.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      const idx = parseInt(wrap.dataset.index);
-      showMenu(e.clientX, e.clientY, idx);
+      showMenu(e.clientX, e.clientY, parseInt(wrap.dataset.index));
     });
-
     const t = document.createElement('div');
     t.className = 'time';
     t.style.alignSelf = cls === 'user' ? 'flex-end' : 'flex-start';
     t.textContent = msg.time;
-
     wrap.appendChild(div);
     wrap.appendChild(t);
     document.getElementById('chat').appendChild(wrap);
@@ -198,12 +209,23 @@
     const menu = document.getElementById('context-menu');
     menu.style.display = 'block';
     menu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
-    menu.style.top = Math.min(y, window.innerHeight - 230) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - 240) + 'px';
   }
 
   function closeMenu() {
     document.getElementById('context-menu').style.display = 'none';
-    activeIndex = -1;
+  }
+
+  // 自定义confirm替代原生confirm
+  function showConfirm(title, msg, onOk) {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-msg').textContent = msg;
+    document.getElementById('confirm-ok').onclick = () => { closeConfirm(); onOk(); };
+    document.getElementById('confirm-modal').style.display = 'flex';
+  }
+
+  function closeConfirm() {
+    document.getElementById('confirm-modal').style.display = 'none';
   }
 
   function copyMsg() {
@@ -216,12 +238,12 @@
   function editMsg() {
     if (activeIndex < 0) return;
     document.getElementById('edit-textarea').value = messages[activeIndex].content;
-    document.getElementById('edit-modal').classList.add('show');
+    document.getElementById('edit-modal').style.display = 'flex';
     closeMenu();
   }
 
   function closeEdit() {
-    document.getElementById('edit-modal').classList.remove('show');
+    document.getElementById('edit-modal').style.display = 'none';
   }
 
   function saveEdit() {
@@ -230,25 +252,36 @@
     messages[activeIndex].content = newText;
     save();
     closeEdit();
-    rerender(); // 重新渲染确保显示正确
+    rerender();
   }
 
   function deleteFromHere() {
-    if (activeIndex < 0) return;
-    if (!confirm(`删除第${activeIndex + 1}条及之后所有消息？`)) { closeMenu(); return; }
-    messages.splice(activeIndex);
-    save();
+    const idx = activeIndex;
     closeMenu();
-    rerender();
+    showConfirm('删除确认', `删除第${idx+1}条及之后所有消息？`, () => {
+      messages.splice(idx);
+      save();
+      rerender();
+    });
   }
 
   function deleteSingle() {
-    if (activeIndex < 0) return;
-    if (!confirm('只删除这一条？')) { closeMenu(); return; }
-    messages.splice(activeIndex, 1);
-    save();
+    const idx = activeIndex;
     closeMenu();
-    rerender();
+    showConfirm('删除确认', '只删除这一条消息？', () => {
+      messages.splice(idx, 1);
+      save();
+      rerender();
+    });
+  }
+
+  function clearChat() {
+    showConfirm('清空确认', '确定清空所有聊天记录？', () => {
+      messages = [];
+      save();
+      rerender();
+      appendMsg('assistant', '🗑️ 已清空');
+    });
   }
 
   document.addEventListener('click', (e) => {
@@ -256,7 +289,6 @@
     if (menu.style.display === 'block' && !menu.contains(e.target)) closeMenu();
   });
 
-  // 初始化
   if (apiKey) document.getElementById('key-area').style.display = 'none';
   if (currentRole) document.getElementById('role-input').value = currentRole;
   if (!controlsVisible) document.getElementById('controls').classList.add('hidden');
@@ -306,7 +338,7 @@
   function applyNovel() {
     const role = document.getElementById('role-input').value.trim();
     const mode = document.getElementById('mode-select').value;
-    if (mode === 'roleplay' && !role) { alert('请填写角色名字！'); return; }
+    if (mode === 'roleplay' && !role) { appendMsg('assistant', '⚠️ 请填写角色名字！'); return; }
     systemPrompt = getSystemPrompt(mode, role);
     localStorage.setItem('system_prompt', systemPrompt);
     localStorage.setItem('current_role', role);
@@ -335,7 +367,7 @@
   }
 
   function exportChat() {
-    if (messages.length === 0) { alert('没有聊天记录！'); return; }
+    if (messages.length === 0) { appendMsg('assistant', '⚠️ 没有聊天记录！'); return; }
     let content = `小说创作记录 - ${currentRole||'D老师'}\n${'='.repeat(30)}\n\n`;
     messages.forEach(m => {
       content += `[${m.time}] ${m.role==='user'?'我':(currentRole||'D老师')}：\n${m.content}\n\n`;
@@ -349,23 +381,13 @@
     URL.revokeObjectURL(url);
   }
 
-  function clearChat() {
-    if (!confirm('确定清空所有记录？')) return;
-    messages = [];
-    save();
-    rerender();
-    appendMsg('assistant', '🗑️ 已清空');
-  }
-
   async function send() {
     const input = document.getElementById('input');
     const text = input.value.trim();
     if (!text || !apiKey) return;
-    if (!systemPrompt) { alert('请先点击"应用"设置模式！'); return; }
+    if (!systemPrompt) { appendMsg('assistant', '⚠️ 请先点击"应用"设置模式！'); return; }
     input.value = '';
-
     appendMsg('user', text);
-
     const loadWrap = document.createElement('div');
     loadWrap.className = 'msg-wrap';
     loadWrap.style.alignItems = 'flex-start';
@@ -375,7 +397,6 @@
     loadWrap.appendChild(loadDiv);
     document.getElementById('chat').appendChild(loadWrap);
     document.getElementById('chat').scrollTop = 9999;
-
     try {
       const model = document.getElementById('model-select').value;
       const apiMessages = [
