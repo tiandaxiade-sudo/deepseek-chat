@@ -31,8 +31,7 @@
   #clear-btn { background: #e53935; color: white; }
   #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   .msg-wrap { display: flex; flex-direction: column; }
-  .msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; line-height: 1.8; white-space: pre-wrap; cursor: pointer; user-select: none; transition: opacity 0.2s; }
-  .msg:active { opacity: 0.7; }
+  .msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; line-height: 1.8; white-space: pre-wrap; cursor: pointer; user-select: none; }
   .user { background: #1a73e8; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
   .ai { background: white; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 15px; }
   .time { font-size: 11px; opacity: 0.6; margin-top: 4px; }
@@ -135,25 +134,133 @@
   let novelText = '';
   let controlsVisible = localStorage.getItem('controls_visible') !== 'false';
   let longPressTimer = null;
-  let activeMsgIndex = -1;
+  let activeIndex = -1; // 当前操作的消息索引
 
-  // 核心数据：messages 同时作为显示记录和 AI history
-  // 每条: { role: 'user'|'assistant', content: string, time: string }
+  // 唯一数据源
   let messages = JSON.parse(localStorage.getItem('messages_v2') || '[]');
-
-  // DOM 元素列表，与 messages 一一对应
-  let domList = [];
-
-  if (apiKey) document.getElementById('key-area').style.display = 'none';
-  if (currentRole) document.getElementById('role-input').value = currentRole;
-  if (!controlsVisible) document.getElementById('controls').classList.add('hidden');
-
-  // 初始化渲染
-  messages.forEach((m, i) => renderMsgDOM(m, i));
 
   function save() {
     localStorage.setItem('messages_v2', JSON.stringify(messages));
   }
+
+  // 重新渲染所有消息（确保索引准确）
+  function rerender() {
+    const chat = document.getElementById('chat');
+    chat.innerHTML = '';
+    messages.forEach((m, i) => buildDOM(m, i));
+  }
+
+  function buildDOM(msg, index) {
+    const cls = msg.role === 'user' ? 'user' : 'ai';
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-wrap';
+    wrap.dataset.index = index; // 关键：把索引存在DOM上
+    wrap.style.alignItems = cls === 'user' ? 'flex-end' : 'flex-start';
+
+    const div = document.createElement('div');
+    div.className = 'msg ' + cls;
+    div.textContent = msg.content;
+
+    // 长按事件
+    div.addEventListener('touchstart', (e) => {
+      const idx = parseInt(wrap.dataset.index);
+      longPressTimer = setTimeout(() => showMenu(e.touches[0].clientX, e.touches[0].clientY, idx), 600);
+    });
+    div.addEventListener('touchend', () => clearTimeout(longPressTimer));
+    div.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+    div.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const idx = parseInt(wrap.dataset.index);
+      showMenu(e.clientX, e.clientY, idx);
+    });
+
+    const t = document.createElement('div');
+    t.className = 'time';
+    t.style.alignSelf = cls === 'user' ? 'flex-end' : 'flex-start';
+    t.textContent = msg.time;
+
+    wrap.appendChild(div);
+    wrap.appendChild(t);
+    document.getElementById('chat').appendChild(wrap);
+    return wrap;
+  }
+
+  function appendMsg(role, content) {
+    const msg = { role, content, time: getTime() };
+    messages.push(msg);
+    save();
+    buildDOM(msg, messages.length - 1);
+    document.getElementById('chat').scrollTop = 9999;
+  }
+
+  function showMenu(x, y, index) {
+    activeIndex = index;
+    const menu = document.getElementById('context-menu');
+    menu.style.display = 'block';
+    menu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - 230) + 'px';
+  }
+
+  function closeMenu() {
+    document.getElementById('context-menu').style.display = 'none';
+    activeIndex = -1;
+  }
+
+  function copyMsg() {
+    if (activeIndex < 0) return;
+    const text = messages[activeIndex].content;
+    closeMenu();
+    navigator.clipboard.writeText(text).then(() => appendMsg('assistant', '📋 已复制'));
+  }
+
+  function editMsg() {
+    if (activeIndex < 0) return;
+    document.getElementById('edit-textarea').value = messages[activeIndex].content;
+    document.getElementById('edit-modal').classList.add('show');
+    closeMenu();
+  }
+
+  function closeEdit() {
+    document.getElementById('edit-modal').classList.remove('show');
+  }
+
+  function saveEdit() {
+    const newText = document.getElementById('edit-textarea').value.trim();
+    if (!newText || activeIndex < 0) return;
+    messages[activeIndex].content = newText;
+    save();
+    closeEdit();
+    rerender(); // 重新渲染确保显示正确
+  }
+
+  function deleteFromHere() {
+    if (activeIndex < 0) return;
+    if (!confirm(`删除第${activeIndex + 1}条及之后所有消息？`)) { closeMenu(); return; }
+    messages.splice(activeIndex);
+    save();
+    closeMenu();
+    rerender();
+  }
+
+  function deleteSingle() {
+    if (activeIndex < 0) return;
+    if (!confirm('只删除这一条？')) { closeMenu(); return; }
+    messages.splice(activeIndex, 1);
+    save();
+    closeMenu();
+    rerender();
+  }
+
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('context-menu');
+    if (menu.style.display === 'block' && !menu.contains(e.target)) closeMenu();
+  });
+
+  // 初始化
+  if (apiKey) document.getElementById('key-area').style.display = 'none';
+  if (currentRole) document.getElementById('role-input').value = currentRole;
+  if (!controlsVisible) document.getElementById('controls').classList.add('hidden');
+  rerender();
 
   function toggleControls() {
     controlsVisible = !controlsVisible;
@@ -204,17 +311,16 @@
     localStorage.setItem('system_prompt', systemPrompt);
     localStorage.setItem('current_role', role);
     currentRole = role;
-    // 清空对话重新开始
-    messages = []; domList = [];
-    document.getElementById('chat').innerHTML = '';
+    messages = [];
     save();
+    rerender();
     const modeNames = { roleplay:'角色扮演', continue:'续写小说', scene:'场景创作', full:'完整小说模式' };
     const modelName = document.getElementById('model-select').value === 'deepseek-reasoner' ? 'D老师R1' : 'D老师';
     appendMsg('assistant', `✅ 已切换到【${modeNames[mode]}】，使用【${modelName}】${role?'，角色：'+role:''}，开始吧！`);
   }
 
   function onModeChange() {
-    const hints = { roleplay:'💡 和角色对话，D老师以角色身份回应', continue:'💡 粘贴前文，D老师续写（点继续可接着写）', scene:'💡 描述场景，D老师帮你写出来', full:'💡 混合模式：可对话可续写可创作' };
+    const hints = { roleplay:'💡 和角色对话', continue:'💡 粘贴前文，D老师续写', scene:'💡 描述场景，D老师帮你写', full:'💡 混合模式' };
     document.getElementById('hint').textContent = hints[document.getElementById('mode-select').value];
   }
 
@@ -228,127 +334,6 @@
     return `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
   }
 
-  function renderMsgDOM(msg, index) {
-    const cls = msg.role === 'user' ? 'user' : 'ai';
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-wrap';
-    wrap.style.alignItems = cls === 'user' ? 'flex-end' : 'flex-start';
-
-    const div = document.createElement('div');
-    div.className = 'msg ' + cls;
-    div.textContent = msg.content;
-
-    div.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, index), 600); });
-    div.addEventListener('touchend', () => clearTimeout(longPressTimer));
-    div.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-    div.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e, index); });
-
-    const t = document.createElement('div');
-    t.className = 'time';
-    t.style.alignSelf = cls === 'user' ? 'flex-end' : 'flex-start';
-    t.textContent = msg.time;
-
-    wrap.appendChild(div);
-    wrap.appendChild(t);
-    document.getElementById('chat').appendChild(wrap);
-    document.getElementById('chat').scrollTop = 9999;
-    domList[index] = wrap;
-    return wrap;
-  }
-
-  function appendMsg(role, content) {
-    const msg = { role, content, time: getTime() };
-    const index = messages.length;
-    messages.push(msg);
-    save();
-    renderMsgDOM(msg, index);
-  }
-
-  function showMenu(e, index) {
-    activeMsgIndex = index;
-    const menu = document.getElementById('context-menu');
-    menu.style.display = 'block';
-    const clientX = e.clientX || e.touches?.[0]?.clientX || 100;
-    const clientY = e.clientY || e.touches?.[0]?.clientY || 100;
-    menu.style.left = Math.min(clientX, window.innerWidth - 180) + 'px';
-    menu.style.top = Math.min(clientY, window.innerHeight - 220) + 'px';
-  }
-
-  function closeMenu() {
-    document.getElementById('context-menu').style.display = 'none';
-    activeMsgIndex = -1;
-  }
-
-  function copyMsg() {
-    if (activeMsgIndex < 0) return;
-    navigator.clipboard.writeText(messages[activeMsgIndex].content).then(() => {
-      closeMenu();
-      appendMsg('assistant', '📋 已复制到剪贴板');
-    });
-  }
-
-  function editMsg() {
-    if (activeMsgIndex < 0) return;
-    document.getElementById('edit-textarea').value = messages[activeMsgIndex].content;
-    document.getElementById('edit-modal').classList.add('show');
-    closeMenu();
-  }
-
-  function closeEdit() {
-    document.getElementById('edit-modal').classList.remove('show');
-  }
-
-  function saveEdit() {
-    const newText = document.getElementById('edit-textarea').value.trim();
-    if (!newText || activeMsgIndex < 0) return;
-    messages[activeMsgIndex].content = newText;
-    save();
-    const msgEl = domList[activeMsgIndex]?.querySelector('.msg');
-    if (msgEl) msgEl.textContent = newText;
-    closeEdit();
-  }
-
-  // 删除这条及之后所有
-  function deleteFromHere() {
-    if (activeMsgIndex < 0) return;
-    if (!confirm(`删除第${activeMsgIndex+1}条及之后所有消息？`)) { closeMenu(); return; }
-    // 删除DOM
-    for (let i = activeMsgIndex; i < domList.length; i++) {
-      if (domList[i]) domList[i].remove();
-    }
-    // 删除数据
-    messages.splice(activeMsgIndex);
-    domList.splice(activeMsgIndex);
-    save();
-    closeMenu();
-  }
-
-  // 只删这一条
-  function deleteSingle() {
-    if (activeMsgIndex < 0) return;
-    if (!confirm('只删除这一条消息？')) { closeMenu(); return; }
-    if (domList[activeMsgIndex]) domList[activeMsgIndex].remove();
-    messages.splice(activeMsgIndex, 1);
-    domList.splice(activeMsgIndex, 1);
-    // 重建索引
-    domList.forEach((wrap, i) => {
-      if (wrap) {
-        const div = wrap.querySelector('.msg');
-        if (div) {
-          div.ontouchstart = null;
-          div.addEventListener('touchstart', (e) => { longPressTimer = setTimeout(() => showMenu(e, i), 600); });
-          div.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e, i); });
-        }
-      }
-    });
-    save();
-    closeMenu();
-  }
-
-  document.addEventListener('click', (e) => {
-    if (!document.getElementById('context-menu').contains(e.target)) closeMenu();
-  });
-
   function exportChat() {
     if (messages.length === 0) { alert('没有聊天记录！'); return; }
     let content = `小说创作记录 - ${currentRole||'D老师'}\n${'='.repeat(30)}\n\n`;
@@ -357,16 +342,18 @@
     });
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
+    const a = document.createElement('a');
+    a.href = url;
     a.download = `小说创作_${currentRole||'D老师'}_${new Date().toLocaleDateString()}.txt`;
-    a.click(); URL.revokeObjectURL(url);
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function clearChat() {
     if (!confirm('确定清空所有记录？')) return;
-    messages = []; domList = [];
-    document.getElementById('chat').innerHTML = '';
+    messages = [];
     save();
+    rerender();
     appendMsg('assistant', '🗑️ 已清空');
   }
 
@@ -379,7 +366,6 @@
 
     appendMsg('user', text);
 
-    // loading
     const loadWrap = document.createElement('div');
     loadWrap.className = 'msg-wrap';
     loadWrap.style.alignItems = 'flex-start';
@@ -392,7 +378,6 @@
 
     try {
       const model = document.getElementById('model-select').value;
-      // 用 messages 直接构建 history（排除系统提示条）
       const apiMessages = [
         { role: 'system', content: systemPrompt },
         ...messages.map(m => ({ role: m.role, content: m.content }))
@@ -404,8 +389,6 @@
       });
       const data = await res.json();
       const reply = data.choices[0].message.content;
-
-      // 移除 loading，正式添加
       loadWrap.remove();
       appendMsg('assistant', reply);
     } catch (e) {
