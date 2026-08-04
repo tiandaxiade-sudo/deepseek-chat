@@ -10,15 +10,17 @@
   #top-bar { padding: 8px 12px; background: #6a1b9a; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
   #top-bar span { color: white; font-size: 16px; font-weight: bold; }
   #toggle-btn { background: none; border: none; color: white; font-size: 22px; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
-  #controls { overflow: hidden; transition: max-height 0.3s ease; max-height: 600px; flex-shrink: 0; }
+  #controls { overflow-y: auto; transition: max-height 0.3s ease; max-height: 600px; flex-shrink: 0; }
   #controls.hidden { max-height: 0; }
   #key-area { padding: 12px; background: #fff8e1; border-bottom: 1px solid #ffe082; display: flex; gap: 8px; }
   #apikey { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
   #save-key { padding: 8px 14px; background: #f57c00; color: white; border: none; border-radius: 8px; cursor: pointer; }
   #novel-area { padding: 12px; background: #e8f5e9; border-bottom: 1px solid #c8e6c9; display: flex; flex-direction: column; gap: 8px; }
-  #novel-area label { font-size: 14px; color: #2e7d32; font-weight: bold; }
+  #novel-area label.section-label { font-size: 14px; color: #2e7d32; font-weight: bold; }
   #novel-controls { display: flex; gap: 8px; align-items: center; }
-  #file-input { flex: 1; font-size: 13px; }
+  #file-input { display: none; }
+  #file-label { padding: 8px 14px; background: #66bb6a; color: white; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  #file-name { flex: 1; font-size: 12px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #role-input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
   #load-btn { padding: 8px 14px; background: #388e3c; color: white; border: none; border-radius: 8px; cursor: pointer; white-space: nowrap; }
   #status { font-size: 13px; color: #555; }
@@ -46,7 +48,6 @@
   #context-menu button:last-child { border-bottom: none; }
   #context-menu button:active { background: #f5f5f5; }
   .danger { color: #e53935; }
-  /* 自定义弹窗 */
   .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .modal-box { background: white; border-radius: 16px; padding: 20px; width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 16px; }
   .modal-box .modal-title { font-size: 16px; font-weight: bold; }
@@ -56,7 +57,6 @@
   .btn-cancel { background: #eee; color: #333; }
   .btn-confirm { background: #e53935; color: white; }
   .btn-confirm-blue { background: #1a73e8; color: white; }
-  /* 编辑弹窗 */
   #edit-modal .modal-box { max-width: 500px; }
   #edit-modal textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; min-height: 150px; resize: vertical; outline: none; }
 </style>
@@ -74,12 +74,18 @@
     <button id="save-key" onclick="saveKey()">保存</button>
   </div>
   <div id="novel-area">
-    <label>📖 上传小说原文（txt格式，选填）</label>
+    <label class="section-label">📖 上传小说原文（txt格式，选填）</label>
     <div id="novel-controls">
+      <label id="file-label" for="file-input">选择文件</label>
       <input id="file-input" type="file" accept=".txt" onchange="loadFile(event)" />
+      <span id="file-name">未选择任何文件</span>
       <button id="load-btn" onclick="applyNovel()">应用</button>
     </div>
     <input id="role-input" type="text" placeholder="角色扮演模式：输入角色名字（其他模式可不填）" />
+    <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:#2e7d32;">
+      <input id="strict-style" type="checkbox" checked style="width:16px; height:16px;" />
+      严格遵循原文风格（句式/用词/人称/节奏都对照原文）
+    </label>
     <div id="status">📂 未加载文件</div>
   </div>
   <div id="mode-area">
@@ -92,8 +98,8 @@
     </select>
     <span>🤖 模型：</span>
     <select id="model-select">
-      <option value="deepseek-chat">D老师（普通）</option>
-      <option value="deepseek-reasoner">D老师 R1（更强）</option>
+      <option value="deepseek-v4-flash">D老师 Flash（更快·7/31更新）</option>
+      <option value="deepseek-v4-pro">D老师 Pro（更强·深度推理）</option>
     </select>
   </div>
   <div id="toolbar">
@@ -121,7 +127,6 @@
   <button onclick="closeMenu()">✖️ 取消</button>
 </div>
 
-<!-- 确认弹窗 -->
 <div id="confirm-modal" class="modal-overlay" style="display:none">
   <div class="modal-box">
     <div class="modal-title" id="confirm-title">确认操作</div>
@@ -133,7 +138,6 @@
   </div>
 </div>
 
-<!-- 编辑弹窗 -->
 <div id="edit-modal" class="modal-overlay" style="display:none">
   <div class="modal-box">
     <div class="modal-title">编辑内容</div>
@@ -171,9 +175,11 @@
     wrap.className = 'msg-wrap';
     wrap.dataset.index = String(index);
     wrap.style.alignItems = cls === 'user' ? 'flex-end' : 'flex-start';
+
     const div = document.createElement('div');
     div.className = 'msg ' + cls;
     div.textContent = msg.content;
+
     div.addEventListener('touchstart', (e) => {
       const idx = parseInt(wrap.dataset.index);
       longPressTimer = setTimeout(() => {
@@ -186,14 +192,29 @@
       e.preventDefault();
       showMenu(e.clientX, e.clientY, parseInt(wrap.dataset.index));
     });
+
     const t = document.createElement('div');
     t.className = 'time';
     t.style.alignSelf = cls === 'user' ? 'flex-end' : 'flex-start';
     t.textContent = msg.time;
+
     wrap.appendChild(div);
     wrap.appendChild(t);
     document.getElementById('chat').appendChild(wrap);
     return wrap;
+  }
+
+  function scrollToBottom() {
+    const chat = document.getElementById('chat');
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function scrollToBottomRobust() {
+    scrollToBottom();
+    requestAnimationFrame(scrollToBottom);
+    setTimeout(scrollToBottom, 60);
+    setTimeout(scrollToBottom, 250);
+    setTimeout(scrollToBottom, 500);
   }
 
   function appendMsg(role, content) {
@@ -201,8 +222,14 @@
     messages.push(msg);
     save();
     buildDOM(msg, messages.length - 1);
-    document.getElementById('chat').scrollTop = 9999;
+    scrollToBottomRobust();
   }
+
+  // 手机软键盘收起/弹出时视口高度会变化，重新贴底
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scrollToBottomRobust);
+  }
+  window.addEventListener('resize', scrollToBottomRobust);
 
   function showMenu(x, y, index) {
     activeIndex = index;
@@ -216,7 +243,6 @@
     document.getElementById('context-menu').style.display = 'none';
   }
 
-  // 自定义confirm替代原生confirm
   function showConfirm(title, msg, onOk) {
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-msg').textContent = msg;
@@ -312,6 +338,7 @@
   function loadFile(event) {
     const file = event.target.files[0];
     if (!file) return;
+    document.getElementById('file-name').textContent = file.name;
     const reader = new FileReader();
     reader.onload = function(e) {
       novelText = e.target.result;
@@ -325,21 +352,23 @@
     reader.readAsText(file, 'UTF-8');
   }
 
-  function getSystemPrompt(mode, role) {
+  function getSystemPrompt(mode, role, strictStyle) {
     const ctx = novelText ? `\n\n小说原文参考：\n${novelText}` : '';
+    const styleBlock = (strictStyle && novelText) ? `\n\n【文风严格匹配要求】\n动笔前，先在心里（不要输出分析过程）仔细拆解原文参考的写作风格，包括但不限于：\n- 叙事人称（第一/第三人称）和视角限制\n- 句子长短节奏（短句为主还是长句铺陈，是否多用排比、倒装）\n- 用词习惯（书面/口语、方言词、时代用语、是否爱用成语、标点习惯如破折号省略号的使用频率）\n- 对话与叙述、心理描写的比例\n- 场景描写的详略程度和感官侧重（视觉/听觉/嗅觉等）\n- 整体节奏（快节奏推进情节，还是慢节奏铺陈氛围）\n续写时必须严格贴合以上风格逐项执行，不能替换成你自己习惯的现代通用网文腔调，不要出现原文没有的说教、总结、"心灵鸡汤"式收尾，也不要过度使用比喻和排比去"美化"文字，风格失真比情节小瑕疵更严重。` : '';
     switch(mode) {
-      case 'roleplay': return `你现在是小说中的角色【${role}】。${ctx}\n\n规则：\n1.始终以${role}身份用第一人称说话\n2.保持角色性格语气\n3.不要跳出角色\n4.每次回复不少于1000字，包含动作神态心理活动，用小说笔法展开`;
-      case 'continue': return `你是专业网络小说作家，擅长续写。${ctx}\n\n规则：\n1.用户提供前文你来续写\n2.保持原文文风人物性格\n3.每次不少于1500字\n4.情节有起伏，对话生动，场景细腻\n5.直接输出续写内容不加说明\n6.用户说"继续"就接着写`;
-      case 'scene': return `你是专业网络小说作家，擅长场景创作。${ctx}\n\n规则：\n1.根据用户描述创作场景\n2.每个场景不少于1200字\n3.有生动对话、细腻动作和人物心理\n4.语言有张力情感饱满\n5.直接输出内容不加说明\n6.用户说"继续"就延续场景`;
-      case 'full': return `你是专业网络小说作家，具备角色扮演、续写和场景创作能力。${ctx}\n\n规则：\n1.可扮演角色对话\n2.可续写情节\n3.可创作任意场景\n4.每次不少于1200字，小说笔法展开\n5.语言生动情节丰富人物鲜活\n6.用户说"继续"就接着写`;
+      case 'roleplay': return `你现在是小说中的角色【${role}】。${ctx}${styleBlock}\n\n规则：\n1.始终以${role}身份用第一人称说话\n2.保持角色性格语气\n3.不要跳出角色\n4.每次回复不少于1000字，包含动作神态心理活动，用小说笔法展开`;
+      case 'continue': return `你是专业网络小说作家，擅长续写。${ctx}${styleBlock}\n\n规则：\n1.用户提供前文你来续写\n2.保持原文文风人物性格\n3.每次不少于1500字\n4.情节有起伏，对话生动，场景细腻\n5.直接输出续写内容不加说明\n6.用户说"继续"就接着写`;
+      case 'scene': return `你是专业网络小说作家，擅长场景创作。${ctx}${styleBlock}\n\n规则：\n1.根据用户描述创作场景\n2.每个场景不少于1200字\n3.有生动对话、细腻动作和人物心理\n4.语言有张力情感饱满\n5.直接输出内容不加说明\n6.用户说"继续"就延续场景`;
+      case 'full': return `你是专业网络小说作家，具备角色扮演、续写和场景创作能力。${ctx}${styleBlock}\n\n规则：\n1.可扮演角色对话\n2.可续写情节\n3.可创作任意场景\n4.每次不少于1200字，小说笔法展开\n5.语言生动情节丰富人物鲜活\n6.用户说"继续"就接着写`;
     }
   }
 
   function applyNovel() {
     const role = document.getElementById('role-input').value.trim();
     const mode = document.getElementById('mode-select').value;
+    const strictStyle = document.getElementById('strict-style').checked;
     if (mode === 'roleplay' && !role) { appendMsg('assistant', '⚠️ 请填写角色名字！'); return; }
-    systemPrompt = getSystemPrompt(mode, role);
+    systemPrompt = getSystemPrompt(mode, role, strictStyle);
     localStorage.setItem('system_prompt', systemPrompt);
     localStorage.setItem('current_role', role);
     currentRole = role;
@@ -347,8 +376,8 @@
     save();
     rerender();
     const modeNames = { roleplay:'角色扮演', continue:'续写小说', scene:'场景创作', full:'完整小说模式' };
-    const modelName = document.getElementById('model-select').value === 'deepseek-reasoner' ? 'D老师R1' : 'D老师';
-    appendMsg('assistant', `✅ 已切换到【${modeNames[mode]}】，使用【${modelName}】${role?'，角色：'+role:''}，开始吧！`);
+    const modelName = document.getElementById('model-select').value === 'deepseek-v4-pro' ? 'D老师Pro' : 'D老师Flash';
+    appendMsg('assistant', `✅ 已切换到【${modeNames[mode]}】，使用【${modelName}】${role?'，角色：'+role:''}${strictStyle&&novelText?'，已开启严格风格匹配':''}，开始吧！`);
   }
 
   function onModeChange() {
@@ -387,7 +416,9 @@
     if (!text || !apiKey) return;
     if (!systemPrompt) { appendMsg('assistant', '⚠️ 请先点击"应用"设置模式！'); return; }
     input.value = '';
+    input.blur();
     appendMsg('user', text);
+
     const loadWrap = document.createElement('div');
     loadWrap.className = 'msg-wrap';
     loadWrap.style.alignItems = 'flex-start';
@@ -396,7 +427,8 @@
     loadDiv.textContent = '✍️ 创作中...';
     loadWrap.appendChild(loadDiv);
     document.getElementById('chat').appendChild(loadWrap);
-    document.getElementById('chat').scrollTop = 9999;
+    scrollToBottomRobust();
+
     try {
       const model = document.getElementById('model-select').value;
       const apiMessages = [
@@ -409,12 +441,18 @@
         body: JSON.stringify({ model, max_tokens: 4000, messages: apiMessages })
       });
       const data = await res.json();
-      const reply = data.choices[0].message.content;
       loadWrap.remove();
-      appendMsg('assistant', reply);
+
+      if (!res.ok || !data.choices) {
+        const errMsg = (data.error && data.error.message) ? data.error.message : '请求失败，请检查 API Key';
+        appendMsg('assistant', '⚠️ ' + errMsg);
+      } else {
+        const reply = data.choices[0].message.content;
+        appendMsg('assistant', reply);
+      }
     } catch (e) {
       loadWrap.remove();
-      appendMsg('assistant', '出错了，请检查 API Key 是否正确');
+      appendMsg('assistant', '⚠️ 出错了，请检查 API Key 是否正确或网络连接');
     }
   }
 </script>
