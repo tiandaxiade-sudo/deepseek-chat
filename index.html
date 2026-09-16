@@ -98,8 +98,7 @@
     </select>
     <span>🤖 模型：</span>
     <select id="model-select">
-      <option value="deepseek-v4-flash">D老师 Flash（更快·7/31更新）</option>
-      <option value="deepseek-v4-pro">D老师 Pro（更强·深度推理）</option>
+      <option value="deepseek-v4-flash">D老师 V4.1-Flash（最新·9月10日发布）</option>
     </select>
   </div>
   <div id="toolbar">
@@ -225,7 +224,6 @@
     scrollToBottomRobust();
   }
 
-  // 手机软键盘收起/弹出时视口高度会变化，重新贴底
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', scrollToBottomRobust);
   }
@@ -376,7 +374,7 @@
     save();
     rerender();
     const modeNames = { roleplay:'角色扮演', continue:'续写小说', scene:'场景创作', full:'完整小说模式' };
-    const modelName = document.getElementById('model-select').value === 'deepseek-v4-pro' ? 'D老师Pro' : 'D老师Flash';
+    const modelName = 'D老师 V4.1-Flash';
     appendMsg('assistant', `✅ 已切换到【${modeNames[mode]}】，使用【${modelName}】${role?'，角色：'+role:''}${strictStyle&&novelText?'，已开启严格风格匹配':''}，开始吧！`);
   }
 
@@ -435,7 +433,7 @@
         { role: 'system', content: systemPrompt },
         ...messages.map(m => ({ role: m.role, content: m.content }))
       ];
-      const res = await fetch('https://api.deepseek.com/chat/completions', {
+      const res = await fetch('/api/deepseek', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify({ model, max_tokens: 4000, messages: apiMessages })
@@ -455,6 +453,4 @@
       appendMsg('assistant', '⚠️ 出错了，请检查 API Key 是否正确或网络连接');
     }
   }
-</script>
-</body>
-</html>
+</scri
