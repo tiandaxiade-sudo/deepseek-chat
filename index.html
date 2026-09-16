@@ -433,7 +433,7 @@
         { role: 'system', content: systemPrompt },
         ...messages.map(m => ({ role: m.role, content: m.content }))
       ];
-      const res = await fetch('/api/deepseek', {
+      const res = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify({ model, max_tokens: 4000, messages: apiMessages })
@@ -453,4 +453,6 @@
       appendMsg('assistant', '⚠️ 出错了，请检查 API Key 是否正确或网络连接');
     }
   }
-</scri
+</script>
+</body>
+</html>
